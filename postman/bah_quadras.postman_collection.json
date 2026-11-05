@@ -1,0 +1,750 @@
+{
+  "info": {
+    "name": "Bah Quadras API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Rode na ordem: 1) Login admin  2) Criar empresa  3) Login empresa  4) Quadras  5) Horários. Os tokens e ids são salvos automaticamente."
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    },
+    {
+      "key": "adminSenha",
+      "value": "admin123"
+    },
+    {
+      "key": "tokenAdmin",
+      "value": ""
+    },
+    {
+      "key": "tokenEmpresa",
+      "value": ""
+    },
+    {
+      "key": "tokenCliente",
+      "value": ""
+    },
+    {
+      "key": "quadraId",
+      "value": ""
+    },
+    {
+      "key": "horarioId",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Auth",
+      "item": [
+        {
+          "name": "Registrar cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Cliente Teste\",\n  \"email\": \"cliente.teste@email.com\",\n  \"senha\": \"123456\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Login cliente",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"cliente.teste@email.com\",\n  \"senha\": \"123456\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d) pm.collectionVariables.set('tokenCliente', d.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login admin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@bahquadras.com\",\n  \"senha\": \"{{adminSenha}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d) pm.collectionVariables.set('tokenAdmin', d.token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login empresa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"contato@arena.com\",\n  \"senha\": \"senha123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d) pm.collectionVariables.set('tokenEmpresa', d.token);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. Admin (US3)",
+      "item": [
+        {
+          "name": "Criar empresa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenAdmin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/empresas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "empresas"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"empresa\": \"Arena Esportiva\",\n  \"cnpj\": \"11.222.333/0001-81\",\n  \"responsavel\": \"Maria Dona\",\n  \"email\": \"contato@arena.com\",\n  \"telefone\": \"(51) 99999-0000\",\n  \"senha\": \"senha123\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Quadras (US4/US6)",
+      "item": [
+        {
+          "name": "Listar tipos de quadra",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/tipos-quadra",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "tipos-quadra"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "Criar quadra",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nome\": \"Society Nova\",\n  \"descricao\": \"Grama sintética\",\n  \"tipo_quadra_id\": 1,\n  \"valor_hora\": 150\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d) pm.collectionVariables.set('quadraId', d.quadra.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Listar minhas quadras",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "Buscar quadra",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "Alterar preço (US6)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"valor_hora\": 180\n}"
+            }
+          }
+        },
+        {
+          "name": "Desativar quadra",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativa\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Reativar quadra",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativa\": true\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Horários (US5)",
+      "item": [
+        {
+          "name": "Criar grade (lote)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"horarios\": [\n    {\n      \"dia_semana\": 1,\n      \"hora_inicio\": \"18:00\",\n      \"hora_fim\": \"19:00\"\n    },\n    {\n      \"dia_semana\": 1,\n      \"hora_inicio\": \"19:00\",\n      \"hora_fim\": \"20:00\"\n    },\n    {\n      \"dia_semana\": 6,\n      \"hora_inicio\": \"09:00\",\n      \"hora_fim\": \"10:00\"\n    }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d.horarios && d.horarios.length) pm.collectionVariables.set('horarioId', d.horarios[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Criar um horário",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dia_semana\": 2,\n  \"hora_inicio\": \"18:00\",\n  \"hora_fim\": \"19:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listar grade",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "Listar só segunda-feira",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios?dia_semana=1",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios"
+              ],
+              "query": [
+                {
+                  "key": "dia_semana",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Bloquear slot",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios/{{horarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios",
+                "{{horarioId}}"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ativo\": false\n}"
+            }
+          }
+        },
+        {
+          "name": "Remover slot",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios/{{horarioId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios",
+                "{{horarioId}}"
+              ],
+              "query": []
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Casos de erro",
+      "item": [
+        {
+          "name": "Sem token (401)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/empresas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "empresas"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Cliente em rota de admin (403)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenCliente}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/admin/empresas",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "admin",
+                "empresas"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Horário sobreposto (409)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dia_semana\": 1,\n  \"hora_inicio\": \"18:30\",\n  \"hora_fim\": \"19:30\"\n}"
+            }
+          }
+        },
+        {
+          "name": "hora_fim <= hora_inicio (400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"dia_semana\": 3,\n  \"hora_inicio\": \"20:00\",\n  \"hora_fim\": \"19:00\"\n}"
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
