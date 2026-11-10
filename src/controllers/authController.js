@@ -2,43 +2,59 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../config/database');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const normalizarEmail = (email) => String(email).trim().toLowerCase();
+
 // POST /auth/register
 // Cadastro de cliente (papel fixo: 'cliente')
 async function register(req, res) {
-  const { nome, email, senha } = req.body;
+  const { nome, email, senha, telefone } = req.body;
 
-  // Validação básica dos campos
-  if (!nome || !email || !senha) {
+  if (!nome || !String(nome).trim() || !email || !senha) {
     return res.status(400).json({ erro: 'Nome, email e senha são obrigatórios.' });
   }
 
-  if (senha.length < 6) {
+  const emailNormalizado = normalizarEmail(email);
+  if (!EMAIL_REGEX.test(emailNormalizado)) {
+    return res.status(400).json({ erro: 'E-mail inválido.' });
+  }
+
+  if (String(senha).length < 6) {
     return res.status(400).json({ erro: 'A senha deve ter no mínimo 6 caracteres.' });
   }
 
+  // Opcional; gravado só com dígitos (DDD + número), como o CNPJ
+  const telefoneDigitos = telefone ? String(telefone).replace(/\D/g, '') : null;
+  if (telefoneDigitos !== null && (telefoneDigitos.length < 10 || telefoneDigitos.length > 11)) {
+    return res.status(400).json({ erro: 'Telefone deve ter DDD e 8 ou 9 dígitos.' });
+  }
+
   try {
-    // Verifica se o e-mail já está cadastrado
-    const existente = await db('usuarios').where({ email }).first();
+    const existente = await db('usuarios').where({ email: emailNormalizado }).first();
     if (existente) {
       return res.status(409).json({ erro: 'Este e-mail já está cadastrado.' });
     }
 
-    // Gera o hash da senha (nunca salvar senha pura no banco)
-    const senhaHash = await bcrypt.hash(senha, 10);
+    const senhaHash = await bcrypt.hash(String(senha), 10);
+    const nomeLimpo = String(nome).trim();
 
-    // Insere o novo usuário com papel fixo de 'cliente'
     const [id] = await db('usuarios').insert({
-      nome,
-      email,
+      nome: nomeLimpo,
+      email: emailNormalizado,
+      telefone: telefoneDigitos,
       senha: senhaHash,
       papel: 'cliente',
     });
 
     return res.status(201).json({
       mensagem: 'Cadastro realizado com sucesso.',
-      usuario: { id, nome, email, papel: 'cliente' },
+      usuario: { id, nome: nomeLimpo, email: emailNormalizado, telefone: telefoneDigitos, papel: 'cliente' },
     });
   } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ erro: 'Este e-mail já está cadastrado.' });
+    }
     console.error('Erro no register:', err);
     return res.status(500).json({ erro: 'Erro interno no servidor.' });
   }
@@ -54,19 +70,21 @@ async function login(req, res) {
   }
 
   try {
-    // Busca o usuário pelo e-mail
-    const usuario = await db('usuarios').where({ email }).first();
+    const usuario = await db('usuarios').where({ email: normalizarEmail(email) }).first();
     if (!usuario) {
       return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
     }
 
-    // Compara a senha com o hash salvo no banco
-    const senhaCorreta = await bcrypt.compare(senha, usuario.senha);
+    const senhaCorreta = await bcrypt.compare(String(senha), usuario.senha);
     if (!senhaCorreta) {
       return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
     }
 
-    // Gera o token JWT com os dados do usuário
+    // O painel da empresa mostra o nome dela logo após o login
+    const empresa = usuario.empresa_id
+      ? await db('empresas').where({ id: usuario.empresa_id }).select('id', 'nome').first()
+      : null;
+
     const token = jwt.sign(
       {
         id:    usuario.id,
@@ -86,8 +104,10 @@ async function login(req, res) {
         id:    usuario.id,
         nome:  usuario.nome,
         email: usuario.email,
+        telefone: usuario.telefone || null,
         papel: usuario.papel,
         empresa_id: usuario.empresa_id || null,
+        empresa: empresa || null,
       },
     });
   } catch (err) {

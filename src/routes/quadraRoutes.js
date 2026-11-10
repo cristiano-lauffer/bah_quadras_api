@@ -15,6 +15,7 @@ router.patch('/:id', atualizar);  // US4 editar/desativar + US6 preço
 // Grade semanal de horários da quadra (US5)
 router.get('/:id/horarios', horarios.listar);
 router.post('/:id/horarios', horarios.criar);
+router.put('/:id/horarios', horarios.substituir);
 router.patch('/:id/horarios/:horarioId', horarios.atualizar);
 router.delete('/:id/horarios/:horarioId', horarios.excluir);
 

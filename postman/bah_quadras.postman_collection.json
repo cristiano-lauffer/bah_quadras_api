@@ -61,7 +61,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nome\": \"Cliente Teste\",\n  \"email\": \"cliente.teste@email.com\",\n  \"senha\": \"123456\"\n}"
+              "raw": "{\n  \"nome\": \"Cliente Teste\",\n  \"email\": \"cliente.teste@email.com\",\n  \"telefone\": \"(51) 98888-7777\",\n  \"senha\": \"123456\"\n}"
             }
           }
         },
@@ -271,7 +271,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nome\": \"Society Nova\",\n  \"descricao\": \"Grama sintética\",\n  \"tipo_quadra_id\": 1,\n  \"valor_hora\": 150\n}"
+              "raw": "{\n  \"nome\": \"Society Nova\",\n  \"descricao\": \"Grama sintética\",\n  \"tipo_quadra_id\": 1,\n  \"valor_hora\": 150,\n  \"piso\": \"Grama sintética\",\n  \"cobertura\": \"descoberta\",\n  \"capacidade\": 14,\n  \"comodidades\": [\"Vestiário\", \"Iluminação\"],\n  \"imagem_url\": \"https://images.unsplash.com/photo-1522778119026-d647f0596c20\"\n}"
             }
           },
           "event": [
@@ -390,7 +390,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ativa\": false\n}"
+              "raw": "{\n  \"status\": \"inativa\"\n}"
             }
           }
         },
@@ -421,7 +421,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"ativa\": true\n}"
+              "raw": "{\n  \"status\": \"ativa\"\n}"
             }
           }
         }
@@ -616,6 +616,50 @@
               "query": []
             }
           }
+        },
+        {
+          "name": "Salvar grade inteira (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{tokenEmpresa}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/quadras/{{quadraId}}/horarios",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "quadras",
+                "{{quadraId}}",
+                "horarios"
+              ],
+              "query": []
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"horarios\": [\n    { \"dia_semana\": 1, \"hora_inicio\": \"18:00\", \"hora_fim\": \"19:00\" },\n    { \"dia_semana\": 1, \"hora_inicio\": \"19:00\", \"hora_fim\": \"20:00\" },\n    { \"dia_semana\": 3, \"hora_inicio\": \"20:00\", \"hora_fim\": \"21:00\" },\n    { \"dia_semana\": 6, \"hora_inicio\": \"09:00\", \"hora_fim\": \"10:00\" },\n    { \"dia_semana\": 6, \"hora_inicio\": \"23:00\", \"hora_fim\": \"24:00\" }\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d.horarios && d.horarios.length) pm.collectionVariables.set('horarioId', d.horarios[0].id);"
+                ]
+              }
+            }
+          ]
         }
       ]
     },
@@ -741,6 +785,75 @@
             "body": {
               "mode": "raw",
               "raw": "{\n  \"dia_semana\": 3,\n  \"hora_inicio\": \"20:00\",\n  \"hora_fim\": \"19:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Listagem pública com data inválida (400)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/publico/quadras?data=2026-02-31",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "publico",
+                "quadras"
+              ],
+              "query": [
+                {
+                  "key": "data",
+                  "value": "2026-02-31"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Público",
+      "item": [
+        {
+          "name": "Quadras com horários livres hoje",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/publico/quadras",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "publico",
+                "quadras"
+              ],
+              "query": []
+            }
+          }
+        },
+        {
+          "name": "Quadras com horários livres em uma data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/publico/quadras?data=2026-12-01",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "publico",
+                "quadras"
+              ],
+              "query": [
+                {
+                  "key": "data",
+                  "value": "2026-12-01"
+                }
+              ]
             }
           }
         }
