@@ -1,4 +1,11 @@
 require('dotenv').config();
+
+const faltando = ['DB_HOST', 'DB_USER', 'DB_NAME', 'JWT_SECRET'].filter((v) => !process.env[v]);
+if (faltando.length) {
+  console.error(`Variáveis de ambiente ausentes: ${faltando.join(', ')}. Veja o .env.example.`);
+  process.exit(1);
+}
+
 const app = require('./app');
 const db = require('./config/database');
 

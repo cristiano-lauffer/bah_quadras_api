@@ -75,9 +75,11 @@ async function criarEmpresa(req, res) {
       },
     });
   } catch (err) {
-    // Corrida entre duas requisições com o mesmo e-mail (índice único do banco)
+    // Corrida entre duas requisições iguais: o índice único do banco diz qual campo repetiu
     if (err.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ erro: 'E-mail já cadastrado.' });
+      const indice = /for key '([^']+)'/.exec(err.sqlMessage || '');
+      const campo = indice && indice[1].includes('cnpj') ? 'Este CNPJ' : 'Este e-mail';
+      return res.status(409).json({ erro: `${campo} já está cadastrado.` });
     }
     console.error('Erro ao criar empresa:', err);
     return res.status(500).json({ erro: 'Erro interno no servidor.' });

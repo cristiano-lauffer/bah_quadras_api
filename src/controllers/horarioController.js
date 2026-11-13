@@ -85,6 +85,28 @@ async function listar(req, res) {
   }
 }
 
+// Valida cada slot e a sobreposição dentro do próprio lote. Retorna { novos } ou { status, erro }.
+function validarLote(lista) {
+  const novos = [];
+  for (let i = 0; i < lista.length; i++) {
+    const { slot, erro } = validarSlot(lista[i]);
+    if (erro) return { status: 400, erro: lista.length > 1 ? `Horário #${i + 1}: ${erro}` : erro };
+    novos.push(slot);
+  }
+
+  for (let i = 0; i < novos.length; i++) {
+    for (let j = i + 1; j < novos.length; j++) {
+      if (sobrepoe(novos[i], novos[j])) {
+        return {
+          status: 409,
+          erro: `Horários #${i + 1} e #${j + 1} se sobrepõem (${descrever(novos[i])} / ${descrever(novos[j])}).`,
+        };
+      }
+    }
+  }
+  return { novos };
+}
+
 // POST /quadras/:id/horarios — cria um slot ({dia_semana, hora_inicio, hora_fim})
 // ou vários de uma vez ({ horarios: [ ... ] }). Tudo ou nada: se um falhar, nenhum é criado.
 async function criar(req, res) {
@@ -93,23 +115,8 @@ async function criar(req, res) {
     return res.status(400).json({ erro: `Envie de 1 a ${MAX_LOTE} horários.` });
   }
 
-  const novos = [];
-  for (let i = 0; i < lista.length; i++) {
-    const { slot, erro } = validarSlot(lista[i]);
-    if (erro) return res.status(400).json({ erro: lista.length > 1 ? `Horário #${i + 1}: ${erro}` : erro });
-    novos.push(slot);
-  }
-
-  // Sobreposição dentro do próprio lote
-  for (let i = 0; i < novos.length; i++) {
-    for (let j = i + 1; j < novos.length; j++) {
-      if (sobrepoe(novos[i], novos[j])) {
-        return res.status(409).json({
-          erro: `Horários #${i + 1} e #${j + 1} se sobrepõem (${descrever(novos[i])} / ${descrever(novos[j])}).`,
-        });
-      }
-    }
-  }
+  const { novos, status, erro } = validarLote(lista);
+  if (erro) return res.status(status).json({ erro });
 
   try {
     const resultado = await db.transaction(async (trx) => {
@@ -144,6 +151,43 @@ async function criar(req, res) {
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') return res.status(409).json({ erro: 'Já existe um horário com esse início.' });
     console.error('Erro ao criar horários:', err);
+    return res.status(500).json({ erro: 'Erro interno no servidor.' });
+  }
+}
+
+// PUT /quadras/:id/horarios — troca a grade inteira da quadra ({ horarios: [ ... ] }).
+// Lista vazia limpa a grade. Tudo numa transação: ou a grade nova entra inteira, ou nada muda.
+async function substituir(req, res) {
+  if (!Array.isArray(req.body.horarios)) {
+    return res.status(400).json({ erro: 'Envie a grade em { "horarios": [ ... ] }.' });
+  }
+  if (req.body.horarios.length > MAX_LOTE) {
+    return res.status(400).json({ erro: `Envie no máximo ${MAX_LOTE} horários.` });
+  }
+
+  const { novos, status, erro } = validarLote(req.body.horarios);
+  if (erro) return res.status(status).json({ erro });
+
+  try {
+    const resultado = await db.transaction(async (trx) => {
+      const quadra = await trx('quadras')
+        .where({ id: req.params.id, empresa_id: req.usuario.empresa_id })
+        .forUpdate()
+        .first();
+      if (!quadra) return { naoEncontrada: true };
+
+      await trx('horarios').where({ quadra_id: quadra.id }).del();
+      if (novos.length) {
+        await trx('horarios').insert(novos.map((n) => ({ quadra_id: quadra.id, ...n })));
+      }
+      return { horarios: await trx('horarios').where({ quadra_id: quadra.id }).orderBy(['dia_semana', 'hora_inicio']) };
+    });
+
+    if (resultado.naoEncontrada) return res.status(404).json({ erro: 'Quadra não encontrada.' });
+
+    return res.json({ mensagem: 'Grade de horários salva com sucesso.', horarios: resultado.horarios.map(formatar) });
+  } catch (err) {
+    console.error('Erro ao substituir horários:', err);
     return res.status(500).json({ erro: 'Erro interno no servidor.' });
   }
 }
@@ -211,4 +255,4 @@ async function excluir(req, res) {
   }
 }
 
-module.exports = { listar, criar, atualizar, excluir };
+module.exports = { listar, criar, substituir, atualizar, excluir };
