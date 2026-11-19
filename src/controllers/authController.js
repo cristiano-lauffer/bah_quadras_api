@@ -35,6 +35,7 @@ async function montarSessao(usuario) {
       papel: usuario.papel,
       empresa_id: usuario.empresa_id || null,
       empresa: empresa || null,
+      foto_url: usuario.foto_url || null,
     },
   };
 }
@@ -122,4 +123,4 @@ async function login(req, res) {
   }
 }
 
-module.exports = { register, login };
+module.exports = { register, login, montarSessao };
