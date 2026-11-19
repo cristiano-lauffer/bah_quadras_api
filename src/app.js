@@ -2,8 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 
-// Libera o front (Vite roda em http://localhost:5173 por padrão)
-app.use(cors({ origin: (process.env.CORS_ORIGIN || 'http://localhost:5173').split(',') }));
+// Libera o front: Vite em modo dev (5173) e "npm run preview" (4173), se CORS_ORIGIN não disser outra coisa
+const origens = process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:4173';
+app.use(cors({ origin: origens.split(',').map((o) => o.trim()) }));
 
 // Permite receber JSON no body das requisições
 app.use(express.json());
