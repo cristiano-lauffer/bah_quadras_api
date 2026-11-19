@@ -7,7 +7,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // Cria a empresa e o usuário responsável (papel 'empresa') na mesma transação.
 // Campos iguais aos do formulário CadastroEmpresa.jsx do front.
 async function criarEmpresa(req, res) {
-  const { empresa, cnpj, responsavel, email, telefone, senha } = req.body;
+  const { empresa, cnpj, responsavel, email, telefone, senha, endereco } = req.body;
 
   if (!empresa || !cnpj || !responsavel || !email || !senha) {
     return res.status(400).json({
@@ -30,6 +30,17 @@ async function criarEmpresa(req, res) {
     return res.status(400).json({ erro: 'CNPJ deve ter 14 dígitos.' });
   }
 
+  // Opcionais. Telefone só com dígitos (DDD + número), como no cadastro de cliente.
+  const telefoneDigitos = telefone ? String(telefone).replace(/\D/g, '') : null;
+  if (telefoneDigitos !== null && (telefoneDigitos.length < 10 || telefoneDigitos.length > 11)) {
+    return res.status(400).json({ erro: 'Telefone deve ter DDD e 8 ou 9 dígitos.' });
+  }
+  // Endereço no formato "Rua, número - Bairro, Cidade/UF": a vitrine do front separa bairro e cidade dele.
+  const enderecoLimpo = endereco ? String(endereco).trim() : null;
+  if (enderecoLimpo && enderecoLimpo.length > 500) {
+    return res.status(400).json({ erro: 'Endereço deve ter no máximo 500 caracteres.' });
+  }
+
   try {
     if (await db('usuarios').where({ email: emailNormalizado }).first()) {
       return res.status(409).json({ erro: 'Este e-mail já está cadastrado.' });
@@ -44,7 +55,8 @@ async function criarEmpresa(req, res) {
       const [empresaId] = await trx('empresas').insert({
         nome: String(empresa).trim(),
         cnpj: cnpjDigitos,
-        telefone: telefone ? String(telefone).trim() : null,
+        telefone: telefoneDigitos,
+        endereco: enderecoLimpo || null,
       });
 
       const [usuarioId] = await trx('usuarios').insert({
@@ -64,7 +76,8 @@ async function criarEmpresa(req, res) {
         id: resultado.empresaId,
         nome: String(empresa).trim(),
         cnpj: cnpjDigitos,
-        telefone: telefone || null,
+        telefone: telefoneDigitos,
+        endereco: enderecoLimpo || null,
       },
       usuario: {
         id: resultado.usuarioId,
