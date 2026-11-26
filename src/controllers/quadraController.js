@@ -16,6 +16,25 @@ function lerComodidades(valor) {
   }
 }
 
+// JSON de objeto (perfil da empresa, preferências...) -> objeto, nunca null
+function lerObjeto(valor) {
+  if (valor && typeof valor === 'object' && !Array.isArray(valor)) return valor;
+  if (typeof valor === 'string') {
+    try {
+      const obj = JSON.parse(valor);
+      return obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+// Foto principal + galeria, sem repetir e sem vazios
+function fotosDaQuadra(q) {
+  return [...new Set([q.imagem_url, ...lerComodidades(q.imagens)].filter(Boolean))];
+}
+
 // mysql2 devolve DECIMAL como string — normaliza pro front
 function formatar(q) {
   return {
@@ -32,6 +51,10 @@ function formatar(q) {
     capacidade: q.capacidade,
     comodidades: lerComodidades(q.comodidades),
     imagem_url: q.imagem_url,
+    imagens: fotosDaQuadra(q),
+    destaque: Boolean(q.destaque),
+    cobranca: q.cobranca,
+    minutos_bateria: q.minutos_bateria,
     created_at: q.created_at,
     updated_at: q.updated_at,
   };
@@ -47,7 +70,7 @@ const vazio = (v) => v === null || v === '';
 // Valida os campos editáveis presentes no body (exceto tipo_quadra_id, que depende do banco).
 // Retorna { campos } ou { erro }.
 function montarCampos(body) {
-  const { nome, descricao, valor_hora, status, piso, cobertura, capacidade, comodidades, imagem_url } = body;
+  const { nome, descricao, valor_hora, status, piso, cobertura, capacidade, comodidades, imagem_url, imagens, cobranca, minutos_bateria } = body;
   const campos = {};
 
   if (nome !== undefined) {
@@ -97,9 +120,26 @@ function montarCampos(body) {
   if (imagem_url !== undefined) {
     const texto = vazio(imagem_url) ? '' : String(imagem_url).trim();
     if (texto && (!URL_REGEX.test(texto) || texto.length > 500)) {
-      return { erro: 'imagem_url deve ser um endereço http(s) de até 500 caracteres. Envio de arquivo ainda não é suportado.' };
+      return { erro: 'imagem_url deve ser um endereço http(s) de até 500 caracteres. Para enviar um arquivo, use POST /uploads.' };
     }
     campos.imagem_url = texto || null;
+  }
+  if (imagens !== undefined) {
+    const lista = imagens === null ? [] : imagens;
+    const validas = Array.isArray(lista) && lista.length <= 10 &&
+      lista.every((u) => typeof u === 'string' && URL_REGEX.test(u) && u.length <= 500);
+    if (!validas) return { erro: 'imagens deve ser uma lista de até 10 endereços http(s).' };
+    campos.imagens = JSON.stringify([...new Set(lista)]);
+  }
+  if (cobranca !== undefined) {
+    if (!['hora', 'bateria'].includes(cobranca)) return { erro: 'cobranca deve ser: hora, bateria.' };
+    campos.cobranca = cobranca;
+  }
+  if (minutos_bateria !== undefined) {
+    if (!vazio(minutos_bateria) && (!Number.isInteger(minutos_bateria) || minutos_bateria < 5 || minutos_bateria > 60)) {
+      return { erro: 'minutos_bateria deve ser um número inteiro de 5 a 60.' };
+    }
+    campos.minutos_bateria = vazio(minutos_bateria) ? null : minutos_bateria;
   }
 
   return { campos };
@@ -163,11 +203,46 @@ async function listar(req, res) {
     if (status) consulta.where('q.status', status);
 
     const quadras = await consulta;
-    return res.json(quadras.map(formatar));
+    const ocupacao = await ocupacaoDosUltimos30Dias(quadras.map((q) => q.id));
+    return res.json(quadras.map((q) => ({ ...formatar(q), ocupacao: ocupacao.get(q.id) ?? 0 })));
   } catch (err) {
     console.error('Erro ao listar quadras:', err);
     return res.status(500).json({ erro: 'Erro interno no servidor.' });
   }
+}
+
+/**
+ * Ocupação (%) de cada quadra nos últimos 30 dias (ontem para trás):
+ * horas reservadas (reservas ATIVAS) / horas abertas na grade semanal nesses dias.
+ */
+async function ocupacaoDosUltimos30Dias(ids) {
+  const resultado = new Map();
+  if (!ids.length) return resultado;
+  const [grade, reservadas] = await Promise.all([
+    db('horarios').whereIn('quadra_id', ids).where({ ativo: true })
+      .groupBy('quadra_id', 'dia_semana').select('quadra_id', 'dia_semana')
+      .sum({ minutos: db.raw('TIME_TO_SEC(TIMEDIFF(hora_fim, hora_inicio)) / 60') }),
+    db('reservas as r').join('solicitacoes_reserva as s', 's.id', 'r.solicitacao_id')
+      .whereIn('s.quadra_id', ids).where('r.status', 'ATIVA')
+      .where('s.data_reserva', '>=', db.raw('CURDATE() - INTERVAL 30 DAY'))
+      .where('s.data_reserva', '<', db.raw('CURDATE()'))
+      .groupBy('s.quadra_id').select('s.quadra_id')
+      .sum({ minutos: db.raw('TIME_TO_SEC(TIMEDIFF(s.hora_fim, s.hora_inicio)) / 60') }),
+  ]);
+  // Quantas vezes cada dia da semana aparece nos últimos 30 dias
+  const vezes = Array(7).fill(0);
+  for (let i = 1; i <= 30; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    vezes[d.getDay()]++;
+  }
+  const aberto = new Map();
+  for (const g of grade) aberto.set(g.quadra_id, (aberto.get(g.quadra_id) || 0) + Number(g.minutos) * vezes[g.dia_semana]);
+  for (const r of reservadas) {
+    const total = aberto.get(r.quadra_id);
+    if (total) resultado.set(r.quadra_id, Math.min(100, Math.round((Number(r.minutos) / total) * 100)));
+  }
+  return resultado;
 }
 
 // GET /quadras/:id
@@ -223,4 +298,4 @@ async function listarTipos(req, res) {
   }
 }
 
-module.exports = { criar, listar, buscar, atualizar, listarTipos, lerComodidades };
+module.exports = { criar, listar, buscar, atualizar, listarTipos, lerComodidades, lerObjeto, fotosDaQuadra, URL_REGEX };

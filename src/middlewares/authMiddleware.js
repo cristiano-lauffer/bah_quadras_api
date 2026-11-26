@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const db = require('../config/database');
 
 // Verifica se o token JWT é válido
 function autenticar(req, res, next) {
@@ -33,11 +34,20 @@ function exigirPapel(...papeis) {
 
 // Garante que o usuário com papel 'empresa' está vinculado a uma empresa.
 // Usado nas rotas em que a empresa só pode mexer nos próprios dados (ownership).
-function exigirEmpresaVinculada(req, res, next) {
+// Empresa desativada pelo admin também perde o acesso (mesmo com token ainda válido).
+async function exigirEmpresaVinculada(req, res, next) {
   if (!req.usuario.empresa_id) {
     return res.status(403).json({ erro: 'Usuário não está vinculado a uma empresa.' });
   }
-  next();
+  try {
+    const empresa = await db('empresas').where({ id: req.usuario.empresa_id }).first('ativo');
+    if (!empresa || !empresa.ativo) {
+      return res.status(403).json({ erro: 'Esta empresa está desativada. Fale com o Bah Quadras para reativar.' });
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
 }
 
 module.exports = { autenticar, exigirPapel, exigirEmpresaVinculada };

@@ -63,7 +63,19 @@
               "mode": "raw",
               "raw": "{\n  \"nome\": \"Cliente Teste\",\n  \"email\": \"cliente.teste@email.com\",\n  \"telefone\": \"(51) 98888-7777\",\n  \"senha\": \"123456\"\n}"
             }
-          }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const d = pm.response.json();",
+                  "if (d && d.token) pm.collectionVariables.set('tokenCliente', d.token);"
+                ]
+              }
+            }
+          ]
         },
         {
           "name": "Login cliente",
@@ -214,7 +226,7 @@
             },
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"empresa\": \"Arena Esportiva\",\n  \"cnpj\": \"11.222.333/0001-81\",\n  \"responsavel\": \"Maria Dona\",\n  \"email\": \"contato@arena.com\",\n  \"telefone\": \"(51) 99999-0000\",\n  \"senha\": \"senha123\"\n}"
+              "raw": "{\n  \"empresa\": \"Arena Esportiva\",\n  \"cnpj\": \"11.222.333/0001-81\",\n  \"responsavel\": \"Maria Dona\",\n  \"email\": \"contato@arena.com\",\n  \"telefone\": \"(51) 99999-0000\",\n  \"senha\": \"senha123\",\n  \"endereco\": \"Rua das Palmeiras, 200 - Centro, Canoas/RS\"\n}"
             }
           }
         }
@@ -852,6 +864,31 @@
                 {
                   "key": "data",
                   "value": "2026-12-01"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Detalhe de uma quadra (com grade semanal)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "description": "Usado pela tela de agendamento: a grade semanal monta os próximos dias e horarios_livres mostra o dia pedido.",
+            "url": {
+              "raw": "{{baseUrl}}/publico/quadras/1?data=2026-11-23",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "publico",
+                "quadras",
+                "1"
+              ],
+              "query": [
+                {
+                  "key": "data",
+                  "value": "2026-11-23"
                 }
               ]
             }

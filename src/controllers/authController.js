@@ -6,6 +6,40 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const normalizarEmail = (email) => String(email).trim().toLowerCase();
 
+// Token + dados do usuário: a mesma resposta no login e no cadastro.
+// O painel da empresa mostra o nome dela logo após entrar, por isso "empresa" vem junto.
+async function montarSessao(usuario) {
+  const empresa = usuario.empresa_id
+    ? await db('empresas').where({ id: usuario.empresa_id }).select('id', 'nome').first()
+    : null;
+
+  const token = jwt.sign(
+    {
+      id:    usuario.id,
+      nome:  usuario.nome,
+      email: usuario.email,
+      papel: usuario.papel,
+      empresa_id: usuario.empresa_id || null,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+  );
+
+  return {
+    token,
+    usuario: {
+      id:    usuario.id,
+      nome:  usuario.nome,
+      email: usuario.email,
+      telefone: usuario.telefone || null,
+      papel: usuario.papel,
+      empresa_id: usuario.empresa_id || null,
+      empresa: empresa || null,
+      foto_url: usuario.foto_url || null,
+    },
+  };
+}
+
 // POST /auth/register
 // Cadastro de cliente (papel fixo: 'cliente')
 async function register(req, res) {
@@ -47,10 +81,11 @@ async function register(req, res) {
       papel: 'cliente',
     });
 
-    return res.status(201).json({
-      mensagem: 'Cadastro realizado com sucesso.',
-      usuario: { id, nome: nomeLimpo, email: emailNormalizado, telefone: telefoneDigitos, papel: 'cliente' },
+    // Já devolve o token: o front entra na conta logo depois do cadastro, sem pedir a senha de novo
+    const sessao = await montarSessao({
+      id, nome: nomeLimpo, email: emailNormalizado, telefone: telefoneDigitos, papel: 'cliente', empresa_id: null,
     });
+    return res.status(201).json({ mensagem: 'Cadastro realizado com sucesso.', ...sessao });
   } catch (err) {
     if (err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ erro: 'Este e-mail já está cadastrado.' });
@@ -80,40 +115,20 @@ async function login(req, res) {
       return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
     }
 
-    // O painel da empresa mostra o nome dela logo após o login
-    const empresa = usuario.empresa_id
-      ? await db('empresas').where({ id: usuario.empresa_id }).select('id', 'nome').first()
-      : null;
+    // Empresa desativada pelo admin: o responsável não entra no painel
+    if (usuario.papel === 'empresa' && usuario.empresa_id) {
+      const empresa = await db('empresas').where({ id: usuario.empresa_id }).first('ativo');
+      if (empresa && !empresa.ativo) {
+        return res.status(403).json({ erro: 'Esta empresa está desativada. Fale com o Bah Quadras para reativar.' });
+      }
+    }
 
-    const token = jwt.sign(
-      {
-        id:    usuario.id,
-        nome:  usuario.nome,
-        email: usuario.email,
-        papel: usuario.papel,
-        empresa_id: usuario.empresa_id || null,
-      },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
-    );
-
-    return res.status(200).json({
-      mensagem: 'Login realizado com sucesso.',
-      token,
-      usuario: {
-        id:    usuario.id,
-        nome:  usuario.nome,
-        email: usuario.email,
-        telefone: usuario.telefone || null,
-        papel: usuario.papel,
-        empresa_id: usuario.empresa_id || null,
-        empresa: empresa || null,
-      },
-    });
+    const sessao = await montarSessao(usuario);
+    return res.status(200).json({ mensagem: 'Login realizado com sucesso.', ...sessao });
   } catch (err) {
     console.error('Erro no login:', err);
     return res.status(500).json({ erro: 'Erro interno no servidor.' });
   }
 }
 
-module.exports = { register, login };
+module.exports = { register, login, montarSessao };

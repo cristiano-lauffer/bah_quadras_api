@@ -1,3 +1,6 @@
 node_modules/
 .env
 *.log
+
+# Fotos enviadas pelo POST /uploads
+uploads/
