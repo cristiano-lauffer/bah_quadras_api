@@ -1,6 +1,6 @@
 # Integração completa do Bah Quadras: onde parou
 
-Data: 19/11/2026. **Nada foi commitado** (a seu pedido). Tudo está como alteração local na branch
+Atualizado em 26/11/2026. Branch
 `feature/integracao-completa` de cada repositório, criada a partir das branches dos bundles.
 
 | Repositório | Branch base | O que mudou |
@@ -17,23 +17,27 @@ Data: 19/11/2026. **Nada foi commitado** (a seu pedido). Tudo está como altera�
 - `vite build` e `oxlint` do front sem erros.
 - O banco foi resetado no fim: está limpo para você testar.
 
+## Regras de negócio (26/11/2026)
+- Pagamento combinado com a empresa pelo WhatsApp (botão "Falar com a empresa" na confirmação). A reserva fica "Aguardando pagamento" até a empresa clicar em "Marcar pago"; aí vira "Confirmada".
+- Cancelamento/remarcação pelo jogador só com mais de 24h (CANCELAMENTO_HORAS no .env da API). Dentro do prazo: WhatsApp da empresa, que cancela pelo painel.
+- Reserva paga e cancelada fica com reembolso "pendente" até a empresa confirmar quanto devolveu ("Marcar reembolsado" pede o valor; o que ela reteve entra no financeiro).
+- Empresa: botão "Novo horário" em Reservas (reserva presencial ou bloqueio de horário).
+- Admin (/admin): números gerais, empresas (cadastrar, editar, ativar/desativar, link de senha). Empresa desativada some do site e não entra.
+- Banco existente: rodar migracoes/003_cancelamento_reembolso.sql.
+
 ## Falta fazer
-1. **Testar no navegador** todo o fluxo (ainda não feito): Home, detalhe, agendamento (inclusive kart),
-   remarcar, cancelar, avaliações, favoritas, perfil do jogador, painel da empresa (dashboard, reservas,
-   financeiro, avaliações, notificações, editar perfil com fotos), recuperar senha.
-2. Corrigir as 3 expectativas do `ferramentas/teste_api.mjs`.
-3. Tela de **reserva de balcão** no painel da empresa (a rota `POST /empresa/reservas` existe, a tela não).
+1. Testar no navegador o resto: avaliações, favoritas, Meus dados com foto, trocar/recuperar senha, notificações, editar perfil da empresa com fotos, cadastro de quadra com foto, kart.
+2. Envio de e-mail de verdade (recuperação de senha e links do admin).
+3. Corrigir as 3 expectativas antigas de ferramentas/teste_api.mjs.
 4. Atualizar READMEs e a coleção do Postman da API com as rotas novas.
-5. Painel de admin no site: não existe (o admin continua só pela API). Decidir se entra.
-6. Envio de e-mail de verdade na recuperação de senha (hoje o link sai no terminal da API e,
-   fora de produção, no próprio site).
-7. Revisar e commitar cada repositório (só quando você pedir).
+5. Abrir os PRs para a main quando quiser.
+6. Ideia futura: liberar automaticamente o horário de reservas não pagas depois de um prazo (ex.: 2 horas).
 
 ## Contas (senhas de desenvolvimento)
 - Empresa Arena Central: contato@arenacentral.com / empresa123
 - Empresa Arena Sport (painel cheio de dados): contato@arenasport.com / empresa123 (nova)
 - Jogadores: joao@arena.local e maria@arena.local / cliente123
-- Admin (só API): admin@bahquadras.com / admin123
+- Admin (painel em /admin): admin@bahquadras.com / admin123
 
 ## Para voltar a rodar
 1. Ligar o MySQL (PowerShell como administrador): `Start-Service MySQL80`

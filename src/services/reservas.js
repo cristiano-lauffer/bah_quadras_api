@@ -19,17 +19,24 @@ const DURACAO_MAXIMA = 3; // horas seguidas
 const BATERIAS_MAXIMAS = 4;
 const DIAS_ANTECEDENCIA = 60;
 const FORMAS_PAGAMENTO = ['Pix', 'Cartão', 'Dinheiro'];
+// Prazo da política: com menos que isso até o jogo, o jogador não cancela nem remarca sozinho
+// (fala com a empresa, que decide a cobrança e cancela pelo painel).
+const HORAS_CANCELAMENTO = Number(process.env.CANCELAMENTO_HORAS) || 24;
 const HORA_REGEX = /^([01]\d|2[0-3]):00(?::00)?$/;
 
 const hhmm = (h) => String(h).slice(0, 5);
 const somarHoras = (hora, n) => `${String(Number(hora.slice(0, 2)) + n).padStart(2, '0')}:00`;
 
 class ErroReserva extends Error {
-  constructor(status, mensagem) {
+  constructor(status, mensagem, codigo) {
     super(mensagem);
     this.status = status;
+    this.codigo = codigo;
   }
 }
+
+const prazoMensagem = () =>
+  `Faltam menos de ${HORAS_CANCELAMENTO} horas para o jogo: fale com a empresa pelo WhatsApp para cancelar ou remarcar.`;
 
 /**
  * Valida o pedido (dia, hora, duração/baterias) para a quadra. Devolve
@@ -159,10 +166,14 @@ async function criarReserva({ quadraId, pedidoBruto, forma_pagamento, origem = '
   });
 }
 
-/** Troca dia/horário (e duração) de uma reserva ATIVA que ainda não começou. */
-async function remarcarReserva(reservaId, pedidoBruto, podeMexer) {
+/**
+ * Troca dia/horário (e duração) de uma reserva ATIVA que ainda não começou.
+ * exigirPrazo: o jogador só remarca sozinho fora do prazo da política.
+ */
+async function remarcarReserva(reservaId, pedidoBruto, podeMexer, { exigirPrazo = false } = {}) {
   return db.transaction(async (trx) => {
     const atual = await buscarParaAlterar(trx, reservaId, podeMexer);
+    if (exigirPrazo && dentroDoPrazo(atual)) throw new ErroReserva(409, prazoMensagem(), 'PRAZO_CANCELAMENTO');
     const quadra = await travarQuadra(trx, atual.quadra_id);
     const pedido = validarPedido(quadra, pedidoBruto);
     await conferirDisponibilidade(trx, quadra.id, pedido, atual.solicitacao_id);
@@ -186,11 +197,22 @@ async function remarcarReserva(reservaId, pedidoBruto, podeMexer) {
   });
 }
 
-/** Cancela uma reserva ATIVA que ainda não começou. */
-async function cancelarReserva(reservaId, podeMexer) {
+/**
+ * Cancela uma reserva ATIVA que ainda não começou.
+ * - por: 'jogador' ou 'empresa'
+ * - exigirPrazo: o jogador só cancela sozinho fora do prazo da política
+ * Reserva já paga fica com reembolso 'pendente' até a empresa marcar que devolveu.
+ */
+async function cancelarReserva(reservaId, podeMexer, { por, exigirPrazo = false } = {}) {
   return db.transaction(async (trx) => {
     const atual = await buscarParaAlterar(trx, reservaId, podeMexer);
-    await trx('reservas').where({ id: atual.id }).update({ status: 'CANCELADA', cancelada_em: trx.fn.now() });
+    if (exigirPrazo && dentroDoPrazo(atual)) throw new ErroReserva(409, prazoMensagem(), 'PRAZO_CANCELAMENTO');
+    await trx('reservas').where({ id: atual.id }).update({
+      status: 'CANCELADA',
+      cancelada_em: trx.fn.now(),
+      cancelada_por: por ?? null,
+      reembolso: atual.pago ? 'pendente' : null,
+    });
     await trx('solicitacoes_reserva')
       .where({ id: atual.solicitacao_id })
       .update({ status_id: STATUS_CANCELADA, updated_at: trx.fn.now() });
@@ -205,7 +227,7 @@ async function buscarParaAlterar(trx, reservaId, podeMexer) {
     .join('quadras as q', 'q.id', 's.quadra_id')
     .where('r.id', reservaId)
     .forUpdate()
-    .first('r.id', 'r.status', 'r.solicitacao_id', 's.usuario_id', 's.quadra_id', 's.data_reserva', 's.hora_inicio', 'q.empresa_id');
+    .first('r.id', 'r.status', 'r.pago', 'r.solicitacao_id', 's.usuario_id', 's.quadra_id', 's.data_reserva', 's.hora_inicio', 'q.empresa_id');
   if (!atual || !podeMexer(atual)) throw new ErroReserva(404, 'Reserva não encontrada.');
   if (atual.status !== 'ATIVA') throw new ErroReserva(409, 'Esta reserva já foi cancelada.');
   const dataTexto = atual.data_reserva instanceof Date ? isoLocal(atual.data_reserva) : String(atual.data_reserva).slice(0, 10);
@@ -213,8 +235,12 @@ async function buscarParaAlterar(trx, reservaId, podeMexer) {
     throw new ErroReserva(409, 'Esta reserva já começou ou terminou e não pode mais ser alterada.');
   }
   atual.data_reserva = dataTexto;
+  atual.inicio = new Date(`${dataTexto}T${hhmm(atual.hora_inicio)}:00`);
   return atual;
 }
+
+// Falta menos que o prazo da política para o jogo começar?
+const dentroDoPrazo = (reserva) => reserva.inicio - Date.now() < HORAS_CANCELAMENTO * 3600000;
 
 /** Consulta base das reservas, com quadra, empresa e cliente. */
 function consultaReservas() {
@@ -227,6 +253,7 @@ function consultaReservas() {
     .select(
       'r.id', 'r.status', 'r.preco_snapshot', 'r.valor_total', 'r.forma_pagamento', 'r.pago', 'r.origem',
       'r.baterias', 'r.minutos_bateria', 'r.cancelada_em', 'r.remarcada_em', 'r.data_anterior', 'r.hora_anterior',
+      'r.cancelada_por', 'r.reembolso', 'r.reembolsado_em', 'r.valor_reembolsado', 'e.telefone as empresa_telefone',
       'r.created_at',
       's.usuario_id', 's.cliente_nome', 's.data_reserva', 's.hora_inicio', 's.hora_fim', 's.observacao',
       'q.id as quadra_id', 'q.nome as quadra_nome', 'q.imagem_url as quadra_imagem', 'q.cobranca',
@@ -272,10 +299,16 @@ function formatarReserva(r) {
         endereco: r.empresa_endereco,
         bairro: perfil.bairro || null,
         cidade: perfil.cidade || null,
+        whatsapp: perfil.whatsapp || null,
+        telefone: perfil.telefone || r.empresa_telefone || null,
       },
     },
     criada_em: r.created_at,
     cancelada_em: r.cancelada_em,
+    cancelada_por: r.cancelada_por,
+    reembolso: r.reembolso,
+    reembolsado_em: r.reembolsado_em,
+    valor_reembolsado: r.valor_reembolsado === null || r.valor_reembolsado === undefined ? null : Number(r.valor_reembolsado),
     remarcada_em: r.remarcada_em,
     anterior: r.data_anterior ? { data: dataIso(r.data_anterior), hora_inicio: hhmm(r.hora_anterior) } : null,
   };
@@ -283,7 +316,7 @@ function formatarReserva(r) {
 
 /** Converte erros de reserva (e o SIGNAL do trigger) em resposta HTTP. */
 function responderErro(res, err, contexto) {
-  if (err instanceof ErroReserva) return res.status(err.status).json({ erro: err.message });
+  if (err instanceof ErroReserva) return res.status(err.status).json({ erro: err.message, ...(err.codigo && { codigo: err.codigo }) });
   if (err.sqlState === '45000') {
     return res.status(409).json({ erro: 'Esse horário acabou de ser reservado por outra pessoa. Escolha outro.' });
   }
@@ -292,5 +325,5 @@ function responderErro(res, err, contexto) {
 }
 
 module.exports = {
-  FORMAS_PAGAMENTO, criarReserva, remarcarReserva, cancelarReserva, consultaReservas, formatarReserva, responderErro,
+  FORMAS_PAGAMENTO, HORAS_CANCELAMENTO, criarReserva, remarcarReserva, cancelarReserva, consultaReservas, formatarReserva, responderErro,
 };

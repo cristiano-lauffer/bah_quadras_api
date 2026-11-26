@@ -213,10 +213,123 @@ async function marcarPaga(req, res) {
 // POST /empresa/reservas/:id/cancelar
 async function cancelar(req, res) {
   try {
-    const id = await cancelarReserva(Number(req.params.id) || 0, daEmpresa(req));
+    const id = await cancelarReserva(Number(req.params.id) || 0, daEmpresa(req), { por: 'empresa' });
     return res.json({ mensagem: 'Reserva cancelada.', reserva: formatarReserva(await consultaReservas().where('r.id', id).first()) });
   } catch (err) {
     return responderErro(res, err, 'cancelar reserva da empresa');
+  }
+}
+
+// POST /empresa/reservas/:id/reembolso — { valor? } a empresa já devolveu o valor de uma reserva paga e cancelada.
+// valor: quanto devolveu (padrão: o total). O que ela reteve continua contando no financeiro.
+async function marcarReembolsada(req, res) {
+  try {
+    const linha = await consultaReservas().where('r.id', Number(req.params.id) || 0).where('q.empresa_id', req.usuario.empresa_id).first();
+    if (!linha) return res.status(404).json({ erro: 'Reserva não encontrada.' });
+    if (linha.reembolso !== 'pendente') return res.status(409).json({ erro: 'Esta reserva não tem reembolso pendente.' });
+    const total = Number(linha.valor_total ?? 0);
+    const valor = req.body?.valor === undefined ? total : Number(req.body.valor);
+    if (!Number.isFinite(valor) || valor < 0 || valor > total) {
+      return res.status(400).json({ erro: `O valor devolvido deve ser de R$ 0 até o total da reserva (R$ ${total.toFixed(2).replace('.', ',')}).` });
+    }
+    await db('reservas').where({ id: linha.id }).update({
+      reembolso: 'feito', reembolsado_em: db.fn.now(), valor_reembolsado: Math.round(valor * 100) / 100,
+    });
+    return res.json({ mensagem: 'Reembolso registrado.', reserva: formatarReserva(await consultaReservas().where('r.id', linha.id).first()) });
+  } catch (err) {
+    return responderErro(res, err, 'registrar reembolso');
+  }
+}
+
+/* ---------------- Bloqueios de horário ---------------- */
+
+const HORA_CHEIA = /^([01]\d|2[0-3]):00$|^24:00$/;
+const DATA_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const hhmm = (h) => String(h).slice(0, 5);
+const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+function formatarBloqueio(b) {
+  const inicio = new Date(b.data_inicio);
+  const fim = new Date(b.data_fim);
+  return {
+    id: b.id,
+    quadra_id: b.quadra_id,
+    data: isoLocal(inicio),
+    hora_inicio: hhmm(inicio.toTimeString()),
+    hora_fim: isoLocal(fim) > isoLocal(inicio) && fim.getHours() === 0 ? '24:00' : hhmm(fim.toTimeString()),
+    motivo: b.motivo,
+  };
+}
+
+// GET /empresa/bloqueios — bloqueios de hoje em diante das quadras da empresa
+async function listarBloqueios(req, res) {
+  try {
+    const lista = await db('bloqueios_quadra as b')
+      .join('quadras as q', 'q.id', 'b.quadra_id')
+      .where('q.empresa_id', req.usuario.empresa_id)
+      .where('b.data_fim', '>', db.raw('NOW()'))
+      .orderBy('b.data_inicio')
+      .select('b.*');
+    return res.json(lista.map(formatarBloqueio));
+  } catch (err) {
+    console.error('Erro ao listar bloqueios:', err);
+    return res.status(500).json({ erro: 'Erro interno no servidor.' });
+  }
+}
+
+// POST /empresa/bloqueios — { quadra_id, data, hora_inicio, hora_fim, motivo }
+// Tira o horário do site (manutenção, evento...). Não pode cobrir reserva ativa.
+async function criarBloqueio(req, res) {
+  const { quadra_id, data, hora_inicio, hora_fim, motivo } = req.body;
+  const texto = String(motivo ?? '').trim();
+  if (!DATA_REGEX.test(String(data ?? ''))) return res.status(400).json({ erro: 'data deve estar no formato AAAA-MM-DD.' });
+  if (!HORA_CHEIA.test(String(hora_inicio ?? '')) || !HORA_CHEIA.test(String(hora_fim ?? '')) || hora_inicio === '24:00' || hora_fim <= hora_inicio) {
+    return res.status(400).json({ erro: 'Use horas cheias (HH:00) e um fim depois do início.' });
+  }
+  if (!texto || texto.length > 255) return res.status(400).json({ erro: 'Informe o motivo (até 255 caracteres).' });
+  if (data < isoLocal(new Date())) return res.status(400).json({ erro: 'Não dá para bloquear um dia que já passou.' });
+
+  const inicio = `${data} ${hora_inicio}:00`;
+  const fim = hora_fim === '24:00'
+    ? `${isoLocal(new Date(new Date(`${data}T12:00:00`).getTime() + 86400000))} 00:00:00`
+    : `${data} ${hora_fim}:00`;
+  try {
+    const resultado = await db.transaction(async (trx) => {
+      const quadra = await trx('quadras').where({ id: Number(quadra_id) || 0, empresa_id: req.usuario.empresa_id }).forUpdate().first('id');
+      if (!quadra) return { status: 404, erro: 'Quadra não encontrada.' };
+      const reserva = await trx('reservas as r')
+        .join('solicitacoes_reserva as s', 's.id', 'r.solicitacao_id')
+        .where({ 's.quadra_id': quadra.id, 's.data_reserva': data, 'r.status': 'ATIVA' })
+        .where('s.hora_inicio', '<', `${hora_fim}:00`)
+        .where('s.hora_fim', '>', `${hora_inicio}:00`)
+        .first('s.hora_inicio');
+      if (reserva) {
+        return { status: 409, erro: `Já existe reserva às ${hhmm(reserva.hora_inicio)} nesse período. Cancele a reserva antes de bloquear.` };
+      }
+      const [id] = await trx('bloqueios_quadra').insert({ quadra_id: quadra.id, data_inicio: inicio, data_fim: fim, motivo: texto });
+      return { bloqueio: await trx('bloqueios_quadra').where({ id }).first() };
+    });
+    if (resultado.erro) return res.status(resultado.status).json({ erro: resultado.erro });
+    return res.status(201).json({ mensagem: 'Horário bloqueado.', bloqueio: formatarBloqueio(resultado.bloqueio) });
+  } catch (err) {
+    console.error('Erro ao criar bloqueio:', err);
+    return res.status(500).json({ erro: 'Erro interno no servidor.' });
+  }
+}
+
+// DELETE /empresa/bloqueios/:id
+async function apagarBloqueio(req, res) {
+  try {
+    const bloqueio = await db('bloqueios_quadra as b')
+      .join('quadras as q', 'q.id', 'b.quadra_id')
+      .where({ 'b.id': Number(req.params.id) || 0, 'q.empresa_id': req.usuario.empresa_id })
+      .first('b.id');
+    if (!bloqueio) return res.status(404).json({ erro: 'Bloqueio não encontrado.' });
+    await db('bloqueios_quadra').where({ id: bloqueio.id }).del();
+    return res.json({ mensagem: 'Bloqueio removido. O horário voltou a ficar livre.' });
+  } catch (err) {
+    console.error('Erro ao remover bloqueio:', err);
+    return res.status(500).json({ erro: 'Erro interno no servidor.' });
   }
 }
 
@@ -272,5 +385,6 @@ async function apagarResposta(req, res) {
 }
 
 module.exports = {
-  obterPerfil, salvarPerfil, listarReservas, criarReservaBalcao, marcarPaga, cancelar, listarAvaliacoes, responder, apagarResposta,
+  obterPerfil, salvarPerfil, listarReservas, criarReservaBalcao, marcarPaga, cancelar, marcarReembolsada,
+  listarBloqueios, criarBloqueio, apagarBloqueio, listarAvaliacoes, responder, apagarResposta,
 };

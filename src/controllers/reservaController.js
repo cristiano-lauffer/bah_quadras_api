@@ -44,7 +44,7 @@ async function criar(req, res) {
 async function remarcar(req, res) {
   const { data, hora_inicio, duracao, baterias } = req.body;
   try {
-    const id = await remarcarReserva(Number(req.params.id), { data, hora_inicio, duracao, baterias }, doJogador(req));
+    const id = await remarcarReserva(Number(req.params.id), { data, hora_inicio, duracao, baterias }, doJogador(req), { exigirPrazo: true });
     return res.json({ mensagem: 'Reserva remarcada.', reserva: await buscar(id) });
   } catch (err) {
     return responderErro(res, err, 'remarcar reserva');
@@ -54,8 +54,12 @@ async function remarcar(req, res) {
 // POST /reservas/:id/cancelar
 async function cancelar(req, res) {
   try {
-    const id = await cancelarReserva(Number(req.params.id), doJogador(req));
-    return res.json({ mensagem: 'Reserva cancelada.', reserva: await buscar(id) });
+    const id = await cancelarReserva(Number(req.params.id), doJogador(req), { por: 'jogador', exigirPrazo: true });
+    const reserva = await buscar(id);
+    const mensagem = reserva.reembolso === 'pendente'
+      ? 'Reserva cancelada. Como ela já estava paga, a empresa vai devolver o valor: combine pelo WhatsApp.'
+      : 'Reserva cancelada.';
+    return res.json({ mensagem, reserva });
   } catch (err) {
     return responderErro(res, err, 'cancelar reserva');
   }

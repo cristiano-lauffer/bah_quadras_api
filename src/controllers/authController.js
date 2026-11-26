@@ -115,6 +115,14 @@ async function login(req, res) {
       return res.status(401).json({ erro: 'E-mail ou senha incorretos.' });
     }
 
+    // Empresa desativada pelo admin: o responsável não entra no painel
+    if (usuario.papel === 'empresa' && usuario.empresa_id) {
+      const empresa = await db('empresas').where({ id: usuario.empresa_id }).first('ativo');
+      if (empresa && !empresa.ativo) {
+        return res.status(403).json({ erro: 'Esta empresa está desativada. Fale com o Bah Quadras para reativar.' });
+      }
+    }
+
     const sessao = await montarSessao(usuario);
     return res.status(200).json({ mensagem: 'Login realizado com sucesso.', ...sessao });
   } catch (err) {
